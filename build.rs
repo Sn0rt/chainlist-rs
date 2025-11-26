@@ -142,6 +142,23 @@ fn load_chains_json() -> String {
     let cache_dir = chains_json_dir(&manifest_dir);
     let local = cache_dir.join("chains.json");
     println!("cargo:rerun-if-changed={}", local.display());
+
+    // In docs.rs or offline builds, use local file without TTL check
+    let is_docs_rs = env::var("DOCS_RS").is_ok();
+    let is_offline = env::var("CARGO_FEATURE_OFFLINE").is_ok();
+
+    if is_docs_rs || is_offline {
+        if local.exists() {
+            return fs::read_to_string(&local)
+                .expect("Failed to read local chains.json in offline mode");
+        } else {
+            panic!(
+                "chains.json not found at {:?} and network access is disabled",
+                local
+            );
+        }
+    }
+
     let ttl = Duration::from_secs(2 * 60 * 60); // 2h
 
     if !is_stale(&local, ttl) {
