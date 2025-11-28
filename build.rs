@@ -169,38 +169,75 @@ fn load_chains_json() -> String {
 
     let url = env::var("CHAINS_JSON_URL")
         .unwrap_or_else(|_| "https://chainid.network/chains.json".to_string());
-    let text = download_chains_json(&url);
-    if let Some(parent) = local.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            panic!("Failed to create chains.json directory {:?}: {e}", parent);
+
+    // Try to download, fallback to local file if download fails
+    match download_chains_json(&url) {
+        Some(text) => {
+            if let Some(parent) = local.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    panic!("Failed to create chains.json directory {:?}: {e}", parent);
+                }
+            }
+            fs::write(&local, &text).unwrap_or_else(|e| {
+                panic!("Failed to write downloaded chains.json to {:?}: {e}", local)
+            });
+            text
+        }
+        None => {
+            // Fallback to local file
+            if local.exists() {
+                println!(
+                    "cargo:warning=Network download failed, using local chains.json at {:?}",
+                    local
+                );
+                fs::read_to_string(&local)
+                    .expect("Failed to read local chains.json after network failure")
+            } else {
+                panic!(
+                    "Failed to download chains.json from {} and no local file exists at {:?}",
+                    url, local
+                );
+            }
         }
     }
-    fs::write(&local, &text)
-        .unwrap_or_else(|e| panic!("Failed to write downloaded chains.json to {:?}: {e}", local));
-    text
 }
 
-fn download_chains_json(url: &str) -> String {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .expect("Failed to build HTTP client");
+fn download_chains_json(url: &str) -> Option<String> {
+    let client = match Client::builder().timeout(Duration::from_secs(30)).build() {
+        Ok(c) => c,
+        Err(e) => {
+            println!("cargo:warning=Failed to build HTTP client: {e}");
+            return None;
+        }
+    };
 
-    let response = client
+    let response = match client
         .get(url)
-        .header("User-Agent", "chains-build/0.1")
+        .header("User-Agent", "chainlist-rs/0.1")
         .send()
-        .unwrap_or_else(|e| panic!("Failed to download {url}: {e}"));
+    {
+        Ok(r) => r,
+        Err(e) => {
+            println!("cargo:warning=Failed to download {url}: {e}");
+            return None;
+        }
+    };
 
     if !response.status().is_success() {
-        panic!("Fetching {url} returned HTTP {}", response.status());
+        println!(
+            "cargo:warning=Fetching {url} returned HTTP {}",
+            response.status()
+        );
+        return None;
     }
 
-    let text = response
-        .text()
-        .unwrap_or_else(|e| panic!("Failed to read response body from {url}: {e}"));
-
-    text
+    match response.text() {
+        Ok(text) => Some(text),
+        Err(e) => {
+            println!("cargo:warning=Failed to read response body from {url}: {e}");
+            None
+        }
+    }
 }
 
 fn is_stale(path: &Path, ttl: Duration) -> bool {

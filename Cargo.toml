@@ -1,6 +1,6 @@
 [package]
 name = "chainlist-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "EVM chain metadata and helpers generated from chainid.network"
@@ -41,4 +41,4 @@ quote = "1.0"
 proc-macro2 = "1.0"
 syn = { version = "2.0", features = ["parsing"] }
 prettyplease = "0.2.16"
-reqwest = { version = "0.12", features = ["blocking", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
